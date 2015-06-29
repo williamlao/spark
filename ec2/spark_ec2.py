@@ -232,6 +232,9 @@ def parse_args():
         help="Resume installation on a previously launched cluster " +
              "(for debugging)")
     parser.add_option(
+        "--ebs-master-vol-size", metavar="SIZE", type="int", default=0,
+        help="Size (in GB) of master's EBS volume.")
+    parser.add_option(
         "--ebs-vol-size", metavar="SIZE", type="int", default=0,
         help="Size (in GB) of each EBS volume.")
     parser.add_option(
@@ -579,6 +582,16 @@ def launch_cluster(conn, opts, cluster_name):
             device.delete_on_termination = True
             block_map["/dev/sd" + chr(ord('s') + i)] = device
 
+    # ceate a block map for the master 
+    master_block_map = BlockDeviceMapping()        
+    if opts.ebs_master_vol_size > 0
+        for i in range(opts.ebs_vol_num):
+            device = EBSBlockDeviceType()
+            device.size = opts.ebs_master_vol_size
+            device.volume_type = opts.ebs_vol_type
+            device.delete_on_termination = True
+            master_block_map["/dev/sd" + chr(ord('s') + i)] = device
+
     # AWS ignores the AMI-specified block device mapping for M3 (see SPARK-3342).
     if opts.instance_type.startswith('m3.'):
         for i in range(get_num_disks(opts.instance_type)):
@@ -698,7 +711,7 @@ def launch_cluster(conn, opts, cluster_name):
             placement=opts.zone,
             min_count=1,
             max_count=1,
-            block_device_map=block_map,
+            block_device_map=master_block_map,
             subnet_id=opts.subnet_id,
             placement_group=opts.placement_group,
             user_data=user_data_content,
