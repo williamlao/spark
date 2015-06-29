@@ -163,7 +163,7 @@ def parse_args():
         prog="spark-ec2",
         version="%prog {v}".format(v=SPARK_EC2_VERSION),
         usage="%prog [options] <action> <cluster_name>\n\n"
-        + "<action> can be: launch, destroy, login, stop, start, get-master, reboot-slaves")
+        + "<action> can be: launch, destroy, login, login-slave, stop, start, get-master, reboot-slaves")
 
     parser.add_option(
         "-s", "--slaves", type="int", default=1,
@@ -227,6 +227,9 @@ def parse_args():
         "-D", metavar="[ADDRESS:]PORT", dest="proxy_port",
         help="Use SSH dynamic port forwarding to create a SOCKS proxy at " +
              "the given local address (for use with login)")
+    parser.add_option(
+        "--auth-forward", action="store_true", default=False,
+        help="Enables SSH auth forwarding during login")
     parser.add_option(
         "--resume", action="store_true", default=False,
         help="Resume installation on a previously launched cluster " +
@@ -584,12 +587,12 @@ def launch_cluster(conn, opts, cluster_name):
 
     # ceate a block map for the master 
     master_block_map = BlockDeviceMapping()        
-    if opts.ebs_master_vol_size > 0
+    if opts.ebs_master_vol_size > 0:
         for i in range(opts.ebs_vol_num):
             device = EBSBlockDeviceType()
             device.size = opts.ebs_master_vol_size
             device.volume_type = opts.ebs_vol_type
-            device.delete_on_termination = True
+            device.delete_on_termination = False
             master_block_map["/dev/sd" + chr(ord('s') + i)] = device
 
     # AWS ignores the AMI-specified block device mapping for M3 (see SPARK-3342).
@@ -1426,8 +1429,27 @@ def real_main():
             proxy_opt = []
             if opts.proxy_port is not None:
                 proxy_opt = ['-D', opts.proxy_port]
+            auth_forward_opt = []
+            if opts.auth_forward:
+                auth_forward_opt = ['-A']
             subprocess.check_call(
-                ssh_command(opts) + proxy_opt + ['-t', '-t', "%s@%s" % (opts.user, master)])
+                ssh_command(opts) + proxy_opt + auth_forward_opt + ['-t', '-t', "%s@%s" % (opts.user, master)])
+
+    elif action == "login-slave":
+        (master_nodes, slave_nodes) = get_existing_cluster(conn, opts, cluster_name)
+        if not slave_nodes[0].public_dns_name and not opts.private_ips:
+            print("Slave has no public DNS name.  Maybe you meant to specify --private-ips?")
+        else:
+            slave = get_dns_name(slave_nodes[0], opts.private_ips)
+            print("Logging into slave 0 " + slave + "...")
+            proxy_opt = []
+            if opts.proxy_port is not None:
+                proxy_opt = ['-D', opts.proxy_port]
+            auth_forward_opt = []
+            if opts.auth_forward:
+                auth_forward_opt = ['-A']
+            subprocess.check_call(
+                ssh_command(opts) + proxy_opt + auth_forward_opt + ['-t', '-t', "%s@%s" % (opts.user, slave)])
 
     elif action == "reboot-slaves":
         response = raw_input(
