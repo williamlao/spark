@@ -163,7 +163,7 @@ def parse_args():
         prog="spark-ec2",
         version="%prog {v}".format(v=SPARK_EC2_VERSION),
         usage="%prog [options] <action> <cluster_name>\n\n"
-        + "<action> can be: launch, destroy, login, login-slave, stop, start, get-master, reboot-slaves")
+        + "<action> can be: launch, destroy, login, login-slave, stop, stop-slaves, start, get-master, reboot-slaves")
 
     parser.add_option(
         "-s", "--slaves", type="int", default=1,
@@ -1487,6 +1487,25 @@ def real_main():
             for inst in master_nodes:
                 if inst.state not in ["shutting-down", "terminated"]:
                     inst.stop()
+            print("Stopping slaves...")
+            for inst in slave_nodes:
+                if inst.state not in ["shutting-down", "terminated"]:
+                    if inst.spot_instance_request_id:
+                        inst.terminate()
+                    else:
+                        inst.stop()
+
+    elif action == "stop-slaves":
+        response = raw_input(
+            "Are you sure you want to stop only the SLAVES in the cluster " +
+            cluster_name + "?\nDATA ON EPHEMERAL DISKS WILL BE LOST, " +
+            "BUT THE CLUSTER WILL KEEP USING SPACE ON\n" +
+            "AMAZON EBS IF IT IS EBS-BACKED!!\n" +
+            "All data on spot-instance slaves will be lost.\n" +
+            "Stop cluster " + cluster_name + " (y/N): ")
+        if response == "y":
+            (master_nodes, slave_nodes) = get_existing_cluster(
+                conn, opts, cluster_name, die_on_error=False)
             print("Stopping slaves...")
             for inst in slave_nodes:
                 if inst.state not in ["shutting-down", "terminated"]:
